@@ -382,6 +382,37 @@ tradingagents backtest NVDA,AAPL --start 2026-06-01 --end 2026-08-01 --every 7
 
 Each cell is scored on realized alpha against the instrument's regional benchmark, grouped by rating. A decision is entered at the first close after its date, because a run reads news published after that day's close. Your own memory log is never written to, and re-running the same grid with `run_id=result.run_id` skips the cells that already ran, so an interrupted sweep continues where it stopped.
 
+## Paper trading with Vibe-Trading
+
+[Vibe-Trading](https://github.com/HKUDS/Vibe-Trading) keeps simulated daily paper accounts that settle orders against completed daily bars. No broker account or API key is needed. `tradingagents.integrations.vibe_paper` connects the two. It reads the paper account, passes it to the agents as the current holdings, turns the final rating into one order, and settles that order on the account.
+
+Install Vibe-Trading in its own virtualenv, because its dependency pins differ from ours, and point the bridge at it:
+
+```bash
+python3 -m venv ~/.venvs/vibe && ~/.venvs/vibe/bin/pip install vibe-trading-ai
+export VIBE_TRADING_BIN=~/.venvs/vibe/bin/vibe-trading
+```
+
+Create an account, then trade it once per session after the close:
+
+```bash
+python -m tradingagents.integrations.vibe_paper create --cash 100000 --label nvda-paper
+python -m tradingagents.integrations.vibe_paper trade --account <id> --ticker NVDA --date 2026-11-03
+python -m tradingagents.integrations.vibe_paper status --account <id>
+```
+
+`--date` is the execution session. It can be settled only after that session closes (16:30 New York time for US accounts). By default the agents analyze the weekday before it, so the decision cannot see the bar it fills on. Sizing works like this:
+
+| Rating | Order |
+|---|---|
+| Buy | buy up to `--max-position-pct` of equity (default 10%) |
+| Overweight | buy up to half of that |
+| Hold, REVIEW | nothing |
+| Underweight | sell half the position |
+| Sell | close the position |
+
+Bullish ratings never sell, bearish ratings never buy, and buys are limited by free cash. Use `--dry-run` to see the order without settling it, or `--rating Buy` to skip the agents. Accounts live under `~/.vibe-trading`, and the Vibe-Trading web UI (`vibe-trading serve`, then `/paper-trading`) shows the same accounts.
+
 ## Reproducibility
 
 TradingAgents is LLM-driven, so two runs of the same ticker and date can differ. This is expected for a research tool built on language models, not a defect. The variation comes from a few distinct sources, and it helps to separate them.
